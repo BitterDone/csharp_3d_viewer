@@ -21,6 +21,13 @@ namespace Csharp_3d_viewer
 
 		static void Main()
 		{
+			azureKinect();
+			//socket();
+		}
+
+		public static void socket()
+		{
+
 			try
 			{
 				//IPHostEntry ipHost = Dns.GetHostEntry(Dns.GetHostName());
@@ -151,19 +158,44 @@ namespace Csharp_3d_viewer
 
 									if (frame.NumberOfBodies > 0)
 									{
-										Debug.WriteLine("body id: " + frame.GetBodyId(0));
-										Skeleton skeleton = frame.GetBodySkeleton(0);
-										Joint head = skeleton.GetJoint(JointId.Head);
-										string msg = "pos: head " + head.Position.X + " " + head.Position.Y + " " + head.Position.Z;
-										Debug.WriteLine(msg);
-										produce(msg);
-									}
+									Debug.WriteLine("body id: " + frame.GetBodyId(0));
+									Skeleton skeleton = frame.GetBodySkeleton(0);
+									//Joint head = skeleton.GetJoint(JointId.Head);
+									//string msg = "pos: head " + head.Position.X + " " + head.Position.Y + " " + head.Position.Z + " " + head.Quaternion.W + " " + head.Quaternion.X + " " + head.Quaternion.Y +  " " + head.Quaternion.Z;
+									//Debug.WriteLine(msg);
+									//produce(msg);
+
+									string stringifiedSkeleton = "";
+
+										for (var i = 0; i < (int)JointId.Count; i++)
+										{
+										Joint joint = skeleton.GetJoint(i);
+										float posX = joint.Position.X;
+										float posY = joint.Position.Y;
+										float posZ = joint.Position.Z;
+
+										float quatW = joint.Quaternion.W;
+										float quatX = joint.Quaternion.X;
+										float quatY = joint.Quaternion.Y;
+										float quatZ = joint.Quaternion.Z;
+
+										JointId jointName = (JointId)i;
+										//string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}{6}#{7}", jointName, posX, posY, posZ, quatW, quatX, quatY, quatZ); // 8 components -000 = 32 + 7 = 39
+										string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}#{6}", posX, posY, posZ, quatW, quatX, quatY, quatZ); // 7 components -000 = 28 + 5 = 33
+
+										stringifiedSkeleton = String.Format("{0}@{1}", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
+										}
+
+									stringifiedSkeleton = String.Format("{0}!{1}", DateTime.UtcNow.ToString(), stringifiedSkeleton); // x5/x6/2005 09:34:42 PM = 22 char + 2, 7418 vs 10,008 chars passed for every skeleton
+
+									Debug.WriteLine(stringifiedSkeleton);
+									produce(stringifiedSkeleton);
 								}
 							}
 						}
 					}
 				}
-			//}
+			}
 		}
 
 		public static async Task produce(string message)
