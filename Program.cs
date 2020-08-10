@@ -5,10 +5,10 @@ using System.Diagnostics;
 using Confluent.Kafka;
 using System.Threading.Tasks;
 
-using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.IO;
 
 namespace Csharp_3d_viewer
 {
@@ -111,11 +111,11 @@ namespace Csharp_3d_viewer
 		{
 			//using (var visualizerData = new VisualizerData())
 			//{
-			//var renderer = new Renderer(visualizerData);
+				//var renderer = new Renderer(visualizerData);
 
-			//renderer.StartVisualizationThread();
+				//renderer.StartVisualizationThread();
 
-			Debug.WriteLine("start main");
+				Debug.WriteLine("start main");
 				using (Device device = Device.Open())
 				{
 					Debug.WriteLine("opened device");
@@ -138,19 +138,27 @@ namespace Csharp_3d_viewer
 					using (Tracker tracker = Tracker.Create(deviceCalibration, new TrackerConfiguration() { ProcessingMode = TrackerProcessingMode.Gpu, SensorOrientation = SensorOrientation.Default }))
 					{
 						Debug.WriteLine("tracker created");
-						//while (renderer.IsActive)
-						while (true)
+					//while (renderer.IsActive)
+					while (true)
+					{
+						//Debug.WriteLine("test0");
+						using (Capture sensorCapture = device.GetCapture())
 						{
-							using (Capture sensorCapture = device.GetCapture())
-							{
-								// Queue latest frame from the sensor.
-								tracker.EnqueueCapture(sensorCapture);
-							}
+							// Queue latest frame from the sensor. thros System.FieldAccessException
+							tracker.EnqueueCapture(sensorCapture);
+						}
+						Debug.WriteLine("test1");
 
-							Debug.WriteLine("while");
-							using (Frame frame = tracker.PopResult(TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
+						ConsoleKey key;
+						string fileOfSkeletons = "";
+						//int x = 0;
+						while (!Console.KeyAvailable)
+						{
+							string stringifiedSkeleton = "";
+
+							//using (Frame frame = tracker.PopResult(TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
+							using (Frame frame = tracker.PopResult())
 							{
-								Debug.WriteLine("popped result");
 								if (frame != null)
 								{
 									Debug.WriteLine("{0} bodies found.", frame.NumberOfBodies);
@@ -158,44 +166,88 @@ namespace Csharp_3d_viewer
 
 									if (frame.NumberOfBodies > 0)
 									{
-									Debug.WriteLine("body id: " + frame.GetBodyId(0));
-									Skeleton skeleton = frame.GetBodySkeleton(0);
-									//Joint head = skeleton.GetJoint(JointId.Head);
-									//string msg = "pos: head " + head.Position.X + " " + head.Position.Y + " " + head.Position.Z + " " + head.Quaternion.W + " " + head.Quaternion.X + " " + head.Quaternion.Y +  " " + head.Quaternion.Z;
-									//Debug.WriteLine(msg);
-									//produce(msg);
+										Debug.WriteLine("body id: " + frame.GetBodyId(0));
+										Skeleton skeleton = frame.GetBodySkeleton(0);
+										//Joint head = skeleton.GetJoint(JointId.Head);
+										//string msg = "pos: head " + head.Position.X + " " + head.Position.Y + " " + head.Position.Z + " " + head.Quaternion.W + " " + head.Quaternion.X + " " + head.Quaternion.Y +  " " + head.Quaternion.Z;
 
-									string stringifiedSkeleton = "";
+										//string stringifiedSkeleton = "";
 
 										for (var i = 0; i < (int)JointId.Count; i++)
 										{
-										Joint joint = skeleton.GetJoint(i);
-										float posX = joint.Position.X;
-										float posY = joint.Position.Y;
-										float posZ = joint.Position.Z;
+											Joint joint = skeleton.GetJoint(i);
+											float posX = joint.Position.X;
+											float posY = joint.Position.Y;
+											float posZ = joint.Position.Z;
 
-										float quatW = joint.Quaternion.W;
-										float quatX = joint.Quaternion.X;
-										float quatY = joint.Quaternion.Y;
-										float quatZ = joint.Quaternion.Z;
+											//float quatW = joint.Quaternion.W;
+											//float quatX = joint.Quaternion.X;
+											//float quatY = joint.Quaternion.Y;
+											//float quatZ = joint.Quaternion.Z;
 
-										JointId jointName = (JointId)i;
-										//string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}{6}#{7}", jointName, posX, posY, posZ, quatW, quatX, quatY, quatZ); // 8 components -000 = 32 + 7 = 39
-										string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}#{6}", posX, posY, posZ, quatW, quatX, quatY, quatZ); // 7 components -000 = 28 + 5 = 33
-
-										stringifiedSkeleton = String.Format("{0}@{1}", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
+											//JointId jointName = (JointId)i;
+											//string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}{6}#{7}", jointName, posX, posY, posZ, quatW, quatX, quatY, quatZ); // 8 components -000 = 32 + 7 = 39 // for kafka
+											string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
+											stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
 										}
 
-									stringifiedSkeleton = String.Format("{0}!{1}", DateTime.UtcNow.ToString(), stringifiedSkeleton); // x5/x6/2005 09:34:42 PM = 22 char + 2, 7418 vs 10,008 chars passed for every skeleton
-
-									Debug.WriteLine(stringifiedSkeleton);
-									produce(stringifiedSkeleton);
+										//stringifiedSkeleton = String.Format("{0}!{1}", DateTime.UtcNow.ToString(), stringifiedSkeleton); // x5/x6/2005 09:34:42 PM = 22 char + 2, 7418 vs 10,008 chars passed for every skeleton
+										Debug.WriteLine(stringifiedSkeleton);
+										fileOfSkeletons = fileOfSkeletons + stringifiedSkeleton + "\n";
+										//produce(stringifiedSkeleton);
+									}
+									else
+									{
+										Debug.WriteLine("no bodies");
+									}
+								}
+								else
+								{
+									Debug.WriteLine("frame was null");
 								}
 							}
+
+							key = Console.ReadKey(true).Key;
+
+							if (key == ConsoleKey.Enter)
+							{
+								string formattedDateTime = DateTime.Now.ToString("yyyyMMdd_HH.mm.ss"); // -tt
+								writeToFile(formattedDateTime, fileOfSkeletons);
+								fileOfSkeletons = "";
+							}
+							else
+							{
+								Debug.WriteLine("Key not recognized");
+							}
 						}
+					
 					}
 				}
 			}
+		}
+
+		static String formatCoordsFromSkeleton(Skeleton s)
+		{
+			String stringifiedSkeleton = "";
+
+			for (var i = 0; i < (int)JointId.Count; i++)
+			{
+				Joint joint = s.GetJoint(i);
+				float posX = joint.Position.X;
+				float posY = joint.Position.Y;
+				float posZ = joint.Position.Z;
+
+
+				string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
+				stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
+			}
+
+			return stringifiedSkeleton;
+		}
+
+		public static void writeToFile(string filename, string skeleton)
+		{
+			File.AppendAllText(@"D:\path\" + filename + ".txt", skeleton + Environment.NewLine);
 		}
 
 		public static async Task produce(string message)
