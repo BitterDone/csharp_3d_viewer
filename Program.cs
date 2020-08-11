@@ -76,7 +76,10 @@ namespace Csharp_3d_viewer
 
 					Debug.WriteLine("body id: " + frame.GetBodyId(0));
 					Skeleton skeleton = frame.GetBodySkeleton(0);
-					Console.WriteLine($"{skeleton.GetJoint(0).Position.X}");
+
+					string oneSetOfSkeletonJoints = formatCoordsFromSkeleton(skeleton);
+
+					Debug.WriteLine($"{oneSetOfSkeletonJoints}");
 
 				}
 				catch (Exception e) {
@@ -87,20 +90,20 @@ namespace Csharp_3d_viewer
 
 		static String formatCoordsFromSkeleton(Skeleton s)
 		{
-			String stringifiedSkeleton = "";
+			string[] joints = new string[(int)JointId.Count];
 
 			for (var i = 0; i < (int)JointId.Count; i++)
 			{
+				JointId jointName = (JointId)i;
 				Joint joint = s.GetJoint(i);
 				float posX = joint.Position.X;
 				float posY = joint.Position.Y;
 				float posZ = joint.Position.Z;
 
-				string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
-				stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
+				joints[i] = String.Format("Joint,{0},{1},{2},{3}", jointName, posX, posY, posZ);
 			}
 
-			return stringifiedSkeleton;
+			return string.Join(",", joints);
 		}
 
 		public static void writeToFile(string filename, string skeleton)
