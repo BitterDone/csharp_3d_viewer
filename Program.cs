@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.IO;
+using System.Collections.Generic;
 
 namespace Csharp_3d_viewer
 {
@@ -35,6 +36,9 @@ namespace Csharp_3d_viewer
 
 				deviceCalibration = device.GetCalibration();
 				PointCloud.ComputePointCloudCache(deviceCalibration);
+				//small difference with PointCloud enabled
+				//pos: head -0.2916188 -178.0469 853.1077
+				//pos: head -5.753897 -183.444 856.1947
 
 				Debug.WriteLine("started camera");
 			} catch (Exception e) {
@@ -56,35 +60,48 @@ namespace Csharp_3d_viewer
 				Debug.Write("exception starting camera: " + e.ToString());
 				return;
 			}
-			
 
+			List<string> listOfSkeletons = new List<string>();
 			while (true) {
-				using (Capture sensorCapture = device.GetCapture()) { tracker.EnqueueCapture(sensorCapture); } // Queue latest frame from the sensor. thros System.FieldAccessException
+				while (!Console.KeyAvailable) {
+					using (Capture sensorCapture = device.GetCapture()) { tracker.EnqueueCapture(sensorCapture); } // Queue latest frame from the sensor. thros System.FieldAccessException
 
-				Frame frame;
+					Frame frame;
 
-				try {
-					frame = tracker.PopResult(); // (TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
-					if (frame == null) {
-						Debug.WriteLine("frame was null"); 
-						continue;
+					try {
+						frame = tracker.PopResult(); // (TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
+						if (frame == null) {
+							Debug.WriteLine("frame was null"); 
+							continue;
+						}
+
+						uint numBodies = frame.NumberOfBodies;
+						Debug.WriteLine($"{numBodies} bodies found.");
+						if (numBodies < 1) { continue; }
+
+						Debug.WriteLine("body id: " + frame.GetBodyId(0));
+						Skeleton skeleton = frame.GetBodySkeleton(0);
+
+						string oneSetOfSkeletonJoints = formatCoordsFromSkeleton(skeleton);
+
+						Debug.WriteLine($"{oneSetOfSkeletonJoints}");
+						listOfSkeletons.Add(oneSetOfSkeletonJoints);
 					}
-
-					uint numBodies = frame.NumberOfBodies;
-					Debug.WriteLine($"{numBodies} bodies found.");
-					if (numBodies < 1) { continue; }
-
-					Debug.WriteLine("body id: " + frame.GetBodyId(0));
-					Skeleton skeleton = frame.GetBodySkeleton(0);
-
-					string oneSetOfSkeletonJoints = formatCoordsFromSkeleton(skeleton);
-
-					Debug.WriteLine($"{oneSetOfSkeletonJoints}");
-
+					catch (Exception e) {
+						Debug.Write("exception with frame data: " + e.ToString());
+					}
 				}
-				catch (Exception e) {
-					Debug.Write("exception with frame data: " + e.ToString());
+
+				switch (Console.ReadKey(true).Key) {
+					case ConsoleKey.Enter:
+						Debug.WriteLine("Enter pressed, writing skeleton to file");
+						formatAndWriteSkeletons(listOfSkeletons);
+						break;
+					default:
+						Debug.WriteLine("Key not recognized");
+						break;
 				}
+
 			}
 		}
 
@@ -100,15 +117,22 @@ namespace Csharp_3d_viewer
 				float posY = joint.Position.Y;
 				float posZ = joint.Position.Z;
 
+				// https://stackoverflow.com/questions/202813/adding-values-to-a-c-sharp-array
 				joints[i] = String.Format("Joint,{0},{1},{2},{3}", jointName, posX, posY, posZ);
 			}
 
 			return string.Join(",", joints);
 		}
 
-		public static void writeToFile(string filename, string skeleton)
-		{
-			File.AppendAllText(@"D:\path\" + filename + ".txt", skeleton + Environment.NewLine);
+		public static void formatAndWriteSkeletons(List<string> skeletons) {
+			string fileLines = string.Join("\n", skeletons.ToArray());
+			// skeletons.ForEach(skeletonString => {});
+			Debug.WriteLine(fileLines);
+			writeToFile(DateTime.Now.ToString("yyyyMMdd_HH.mm.ss"), fileLines);
+		}
+		public static void writeToFile(string filename, string fileLine)
+		{	
+			File.AppendAllText(@"D:\path\" + filename + ".txt", fileLine + Environment.NewLine);
 		}
 
 		static IPHostEntry ipHost;
