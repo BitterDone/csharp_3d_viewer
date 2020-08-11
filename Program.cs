@@ -14,15 +14,129 @@ namespace Csharp_3d_viewer
 {
 	class Program
 	{
+
+		static void Main()
+		{
+			Debug.WriteLine("start main");
+
+			Device device = null;
+			Calibration deviceCalibration = new Calibration();
+
+			try {
+				device = Device.Open();
+
+				device.StartCameras(new DeviceConfiguration()
+				{
+					CameraFPS = FPS.FPS30,
+					ColorResolution = ColorResolution.Off,
+					DepthMode = DepthMode.NFOV_Unbinned,
+					WiredSyncMode = WiredSyncMode.Standalone,
+				});
+
+				deviceCalibration = device.GetCalibration();
+				PointCloud.ComputePointCloudCache(deviceCalibration);
+
+				Debug.WriteLine("started camera");
+			} catch (Exception e) {
+				Debug.Write("exception starting camera: " + e.ToString());
+				return;
+			}
+
+			Tracker tracker = null;
+
+			try {
+				TrackerConfiguration trackerConfiguration = new TrackerConfiguration() {
+					ProcessingMode = TrackerProcessingMode.Gpu,
+					SensorOrientation = SensorOrientation.Default
+				};
+				tracker = Tracker.Create(deviceCalibration, trackerConfiguration);
+				Debug.WriteLine("tracker created");
+			}
+			catch (Exception e) {
+				Debug.Write("exception starting camera: " + e.ToString());
+				return;
+			}
+			
+
+			while (true) {
+				using (Capture sensorCapture = device.GetCapture()) { tracker.EnqueueCapture(sensorCapture); } // Queue latest frame from the sensor. thros System.FieldAccessException
+
+				Frame frame;
+
+				try {
+					frame = tracker.PopResult(); // (TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
+					if (frame == null) {
+						Debug.WriteLine("frame was null"); 
+						continue;
+					}
+
+					uint numBodies = frame.NumberOfBodies;
+					Debug.WriteLine($"{numBodies} bodies found.");
+					if (numBodies < 1) { continue; }
+
+					Debug.WriteLine("body id: " + frame.GetBodyId(0));
+					Skeleton skeleton = frame.GetBodySkeleton(0);
+					Console.WriteLine($"{skeleton.GetJoint(0).Position.X}");
+
+				}
+				catch (Exception e) {
+					Debug.Write("exception with frame data: " + e.ToString());
+				}
+			}
+		}
+
+		static String formatCoordsFromSkeleton(Skeleton s)
+		{
+			String stringifiedSkeleton = "";
+
+			for (var i = 0; i < (int)JointId.Count; i++)
+			{
+				Joint joint = s.GetJoint(i);
+				float posX = joint.Position.X;
+				float posY = joint.Position.Y;
+				float posZ = joint.Position.Z;
+
+				string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
+				stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
+			}
+
+			return stringifiedSkeleton;
+		}
+
+		public static void writeToFile(string filename, string skeleton)
+		{
+			File.AppendAllText(@"D:\path\" + filename + ".txt", skeleton + Environment.NewLine);
+		}
+
 		static IPHostEntry ipHost;
 		static IPAddress ipAddr;
 		static IPEndPoint localEndPoint;
 		static Socket sender;
 
-		static void Main()
+		public static async Task produce(string message)
 		{
-			azureKinect();
-			//socket();
+			Console.WriteLine("produce ");
+			var config = new ProducerConfig { BootstrapServers = "localhost:9092" };
+
+			// If serializers are not specified, default serializers from
+			// `Confluent.Kafka.Serializers` will be automatically used where
+			// available. Note: by default strings are encoded as UTF8.
+			using (var p = new ProducerBuilder<Null, string>(config).Build())
+			{
+				Console.WriteLine("using");
+				try
+				{
+					Console.WriteLine("try");
+					var dr = await p.ProduceAsync("testTopicName", new Message<Null, string> { Value = message }).ConfigureAwait(false);
+					Console.WriteLine($"Delivered '{dr.Value}' to '{dr.TopicPartitionOffset}'");
+				}
+				catch (ProduceException<Null, string> e)
+				{
+					Console.WriteLine("catch");
+					Console.WriteLine($"Delivery failed: {e.Error.Reason}");
+				}
+				Console.WriteLine("did try");
+			}
 		}
 
 		public static void socket()
@@ -107,173 +221,5 @@ namespace Csharp_3d_viewer
 			sender.Close();
 		}
 
-		public static void azureKinect()
-		{
-			//using (var visualizerData = new VisualizerData())
-			//{
-				//var renderer = new Renderer(visualizerData);
-
-				//renderer.StartVisualizationThread();
-
-				Debug.WriteLine("start main");
-				using (Device device = Device.Open())
-				{
-					Debug.WriteLine("opened device");
-					device.StartCameras(new DeviceConfiguration()
-					{
-						CameraFPS = FPS.FPS30,
-						ColorResolution = ColorResolution.Off,
-						DepthMode = DepthMode.NFOV_Unbinned,
-						WiredSyncMode = WiredSyncMode.Standalone,
-					});
-
-					Debug.WriteLine("started camera");
-					var deviceCalibration = device.GetCalibration();
-
-					//small difference with PointCloud enabled
-					//pos: head -0.2916188 -178.0469 853.1077
-					//pos: head -5.753897 -183.444 856.1947
-					PointCloud.ComputePointCloudCache(deviceCalibration);
-
-					using (Tracker tracker = Tracker.Create(deviceCalibration, new TrackerConfiguration() { ProcessingMode = TrackerProcessingMode.Gpu, SensorOrientation = SensorOrientation.Default }))
-					{
-						Debug.WriteLine("tracker created");
-					//while (renderer.IsActive)
-					while (true)
-					{
-						//Debug.WriteLine("test0");
-						using (Capture sensorCapture = device.GetCapture())
-						{
-							// Queue latest frame from the sensor. thros System.FieldAccessException
-							tracker.EnqueueCapture(sensorCapture);
-						}
-						Debug.WriteLine("test1");
-
-						ConsoleKey key;
-						string fileOfSkeletons = "";
-						//int x = 0;
-						while (!Console.KeyAvailable)
-						{
-							string stringifiedSkeleton = "";
-
-							//using (Frame frame = tracker.PopResult(TimeSpan.FromMilliseconds(500), throwOnTimeout: false))
-							using (Frame frame = tracker.PopResult())
-							{
-								if (frame != null)
-								{
-									Debug.WriteLine("{0} bodies found.", frame.NumberOfBodies);
-									//visualizerData.Frame = frame.Reference();
-
-									if (frame.NumberOfBodies > 0)
-									{
-										Debug.WriteLine("body id: " + frame.GetBodyId(0));
-										Skeleton skeleton = frame.GetBodySkeleton(0);
-										//Joint head = skeleton.GetJoint(JointId.Head);
-										//string msg = "pos: head " + head.Position.X + " " + head.Position.Y + " " + head.Position.Z + " " + head.Quaternion.W + " " + head.Quaternion.X + " " + head.Quaternion.Y +  " " + head.Quaternion.Z;
-
-										//string stringifiedSkeleton = "";
-
-										for (var i = 0; i < (int)JointId.Count; i++)
-										{
-											Joint joint = skeleton.GetJoint(i);
-											float posX = joint.Position.X;
-											float posY = joint.Position.Y;
-											float posZ = joint.Position.Z;
-
-											//float quatW = joint.Quaternion.W;
-											//float quatX = joint.Quaternion.X;
-											//float quatY = joint.Quaternion.Y;
-											//float quatZ = joint.Quaternion.Z;
-
-											//JointId jointName = (JointId)i;
-											//string stringifiedJoint = String.Format("{0}#{1}#{2}#{3}#{4}#{5}{6}#{7}", jointName, posX, posY, posZ, quatW, quatX, quatY, quatZ); // 8 components -000 = 32 + 7 = 39 // for kafka
-											string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
-											stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
-										}
-
-										//stringifiedSkeleton = String.Format("{0}!{1}", DateTime.UtcNow.ToString(), stringifiedSkeleton); // x5/x6/2005 09:34:42 PM = 22 char + 2, 7418 vs 10,008 chars passed for every skeleton
-										Debug.WriteLine(stringifiedSkeleton);
-										fileOfSkeletons = fileOfSkeletons + stringifiedSkeleton + "\n";
-										//produce(stringifiedSkeleton);
-									}
-									else
-									{
-										Debug.WriteLine("no bodies");
-									}
-								}
-								else
-								{
-									Debug.WriteLine("frame was null");
-								}
-							}
-
-							key = Console.ReadKey(true).Key;
-
-							if (key == ConsoleKey.Enter)
-							{
-								string formattedDateTime = DateTime.Now.ToString("yyyyMMdd_HH.mm.ss"); // -tt
-								writeToFile(formattedDateTime, fileOfSkeletons);
-								fileOfSkeletons = "";
-							}
-							else
-							{
-								Debug.WriteLine("Key not recognized");
-							}
-						}
-					
-					}
-				}
-			}
-		}
-
-		static String formatCoordsFromSkeleton(Skeleton s)
-		{
-			String stringifiedSkeleton = "";
-
-			for (var i = 0; i < (int)JointId.Count; i++)
-			{
-				Joint joint = s.GetJoint(i);
-				float posX = joint.Position.X;
-				float posY = joint.Position.Y;
-				float posZ = joint.Position.Z;
-
-
-				string stringifiedJoint = String.Format("{0},{1},{2},", posX, posY, posZ); // for training data
-				stringifiedSkeleton = String.Format("{0},{1},", stringifiedSkeleton, stringifiedJoint); // 32*7=224 32*8=256 components, 224*33=7392 256*39=9984
-			}
-
-			return stringifiedSkeleton;
-		}
-
-		public static void writeToFile(string filename, string skeleton)
-		{
-			File.AppendAllText(@"D:\path\" + filename + ".txt", skeleton + Environment.NewLine);
-		}
-
-		public static async Task produce(string message)
-		{
-			Console.WriteLine("produce ");
-			var config = new ProducerConfig { BootstrapServers = "localhost:9092" };
-
-			// If serializers are not specified, default serializers from
-			// `Confluent.Kafka.Serializers` will be automatically used where
-			// available. Note: by default strings are encoded as UTF8.
-			using (var p = new ProducerBuilder<Null, string>(config).Build())
-			{
-				Console.WriteLine("using");
-				try
-				{
-					Console.WriteLine("try");
-					var dr = await p.ProduceAsync("testTopicName", new Message<Null, string> { Value = message }).ConfigureAwait(false);
-					Console.WriteLine($"Delivered '{dr.Value}' to '{dr.TopicPartitionOffset}'");
-				}
-				catch (ProduceException<Null, string> e)
-				{
-					Console.WriteLine("catch");
-					Console.WriteLine($"Delivery failed: {e.Error.Reason}");
-				}
-				Console.WriteLine("did try");
-			}
-		}
 	}
 }
