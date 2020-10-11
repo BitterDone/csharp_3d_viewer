@@ -61,9 +61,10 @@ namespace Csharp_3d_viewer
 				return;
 			}
 
+			Boolean pause = false;
 			List<string> listOfSkeletons = new List<string>();
 			while (true) {
-				while (!Console.KeyAvailable) {
+				while (!pause && !Console.KeyAvailable) {
 					using (Capture sensorCapture = device.GetCapture()) { tracker.EnqueueCapture(sensorCapture); } // Queue latest frame from the sensor. thros System.FieldAccessException
 
 					Frame frame;
@@ -96,6 +97,15 @@ namespace Csharp_3d_viewer
 					case ConsoleKey.Enter:
 						Debug.WriteLine("Enter pressed, writing skeleton to file");
 						formatAndWriteSkeletons(listOfSkeletons);
+						listOfSkeletons.Clear();
+						break;
+					case ConsoleKey.Spacebar:
+						Debug.WriteLine("Spacebar pressed, pausing");
+						pause = true;
+						break;
+					case ConsoleKey.C:
+						Debug.WriteLine("C pressed, unpausing");
+						pause = false;
 						break;
 					default:
 						Debug.WriteLine("Key not recognized");
@@ -127,12 +137,12 @@ namespace Csharp_3d_viewer
 		public static void formatAndWriteSkeletons(List<string> skeletons) {
 			string fileLines = string.Join("\n", skeletons.ToArray());
 			// skeletons.ForEach(skeletonString => {});
-			Debug.WriteLine(fileLines);
+			//Debug.WriteLine(fileLines);
 			writeToFile(DateTime.Now.ToString("yyyyMMdd_HH.mm.ss"), fileLines);
 		}
 		public static void writeToFile(string filename, string fileLine)
 		{	
-			File.AppendAllText(@"D:\path\" + filename + ".txt", fileLine + Environment.NewLine);
+			File.AppendAllText(@"D:\path\newfolder\" + filename + ".txt", fileLine + Environment.NewLine);
 		}
 
 		static IPHostEntry ipHost;
